@@ -20,4 +20,6 @@ void print_trapframe(struct Trapframe *tf);
 void page_fault_handler(struct Trapframe *);
 void backtrace(struct Trapframe *);
 
+extern uint32_t traphandlers[];
+
 #endif /* JOS_KERN_TRAP_H */
