@@ -73,6 +73,8 @@ trap_init(void)
 		j++;
 	}
 
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, T_SYSCALL_handler, 3);
+
 	// Per-CPU setup 
 	trap_init_percpu();
 }
@@ -156,6 +158,16 @@ trap_dispatch(struct Trapframe *tf)
 
 	if (tf->tf_trapno == T_BRKPT) {
 		monitor(tf);
+		return;
+	}
+
+	if (tf->tf_trapno == T_SYSCALL) {
+		tf->tf_regs.reg_eax = syscall(tf->tf_regs.reg_eax,
+					      tf->tf_regs.reg_edx,
+					      tf->tf_regs.reg_ecx,
+					      tf->tf_regs.reg_ebx,
+					      tf->tf_regs.reg_edi,
+					      tf->tf_regs.reg_esi);
 		return;
 	}
 

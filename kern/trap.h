@@ -22,4 +22,6 @@ void backtrace(struct Trapframe *);
 
 extern uint32_t traphandlers[];
 
+void T_SYSCALL_handler(void);
+
 #endif /* JOS_KERN_TRAP_H */
