@@ -214,24 +214,7 @@ mem_init(void)
 	// We might not have 2^32 - KERNBASE bytes of physical memory, but
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
-	uint32_t info = 0x0, pte_ps = 0;
-	cpuid(info, &info, NULL, NULL, NULL);
-
-	if (info > 1) {
-		info = 0x1;
-		cpuid(info, NULL, NULL, NULL, &info);
-
-		if (info & 0x8) {
-			uint32_t cr4 = rcr4();
-			cr4 |= CR4_PSE;
-			lcr4(cr4);
-
-			pte_ps = PTE_PS;
-			cprintf("4 MB superpages enabled\n");
-		}
-	}
-
-	boot_map_region(kern_pgdir, KERNBASE, 0xFFFFFFFF - KERNBASE, PADDR((uint32_t *) KERNBASE), PTE_W | pte_ps);
+	boot_map_region(kern_pgdir, KERNBASE, 0xFFFFFFFF - KERNBASE, PADDR((uint32_t *) KERNBASE), PTE_W);
 
 	// Initialize the SMP-related parts of the memory map
 	mem_init_mp();
@@ -451,34 +434,21 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 	char *current, *end;
 	pte_t *pte;
 	pde_t *pde;
-	uint32_t step = PGSIZE, rounddown = PGSIZE;
 
-	if (perm & PTE_PS) {
-		step = PTSIZE;
-		rounddown = PTSIZE;
-	}
-
-	current = (char *)ROUNDDOWN((uint32_t) va, rounddown);
-	end = (char *)ROUNDDOWN((uint32_t) va + size - 1, rounddown);
+	current = (char *)ROUNDDOWN((uint32_t) va, PGSIZE);
+	end = (char *)ROUNDDOWN((uint32_t) va + size - 1, PGSIZE);
 
 	while (1) {
-		if (perm & PTE_PS) {
-			pde = &pgdir[PDX(current)];
-			*pde = pa | perm | PTE_P;
-		} else {
-			if ((pte = pgdir_walk(pgdir, current, 1)) == NULL)
-				panic("pte map failed");
+		if ((pte = pgdir_walk(pgdir, current, 1)) == NULL)
+			panic("pte map failed");
 
-			if (*pte & PTE_P)
-				panic("remap");
+		*pte = pa | perm | PTE_P;
 
-			*pte = pa | perm | PTE_P;
-		}
 		if (current == end)
 			break;
 
-		current += step;
-		pa += step;
+		current += PGSIZE;
+		pa += PGSIZE;
 	}
 }
 
