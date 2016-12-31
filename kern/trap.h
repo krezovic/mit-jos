@@ -21,6 +21,7 @@ void page_fault_handler(struct Trapframe *);
 void backtrace(struct Trapframe *);
 
 extern uint32_t traphandlers[];
+extern uint32_t irqhandlers[];
 
 void T_SYSCALL_handler(void);
 
