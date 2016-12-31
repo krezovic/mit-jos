@@ -23,8 +23,12 @@ pgfault(struct UTrapframe *utf)
 	// Hint:
 	//   Use the read-only page table mappings at uvpt
 	//   (see <inc/memlayout.h>).
+	envid_t envid = sys_getenvid();
 
-	// LAB 4: Your code here.
+	pte_t pte = uvpt[PGNUM(addr)];
+
+	if (!(err & FEC_WR) || !(pte & PTE_COW))
+		panic("pgfault: Not a write error or address is not on a COW page");
 
 	// Allocate a new page, map it at a temporary location (PFTEMP),
 	// copy the data from the old page to the new page, then move the new
@@ -32,9 +36,17 @@ pgfault(struct UTrapframe *utf)
 	// Hint:
 	//   You should make three system calls.
 
-	// LAB 4: Your code here.
+	if (sys_page_alloc(envid, PFTEMP, PTE_P | PTE_W | PTE_U) < 0)
+		panic("pgfault: Cannot allocate a new page at PFTEMP");
 
-	panic("pgfault not implemented");
+	addr = ROUNDDOWN(addr, PGSIZE);
+	memmove(PFTEMP, addr, PGSIZE);
+
+	if (sys_page_unmap(envid, addr) < 0)
+		panic("pgfault: Cannot unmap old page from addr 0x%08x", addr);
+
+	if (sys_page_map(envid, PFTEMP, envid, addr, PTE_P | PTE_W | PTE_U) < 0)
+		panic("pgfault: Cannot map page to PFTEMP");
 }
 
 //
@@ -52,9 +64,18 @@ static int
 duppage(envid_t envid, unsigned pn)
 {
 	int r;
+	pte_t pte = uvpt[pn];
+	uint32_t cow = (pte & PTE_COW || pte & PTE_W) ? PTE_COW : 0;
+	void *addr = (void *)(pn * PGSIZE);
+	envid_t thisenvid = sys_getenvid();
 
-	// LAB 4: Your code here.
-	panic("duppage not implemented");
+	if (sys_page_map(thisenvid, addr, envid, addr, PTE_P | PTE_U | cow) < 0)
+		panic("duppage: Cannot map page into target environment");
+
+	if (cow)
+		if (sys_page_map(thisenvid, addr, thisenvid, addr, PTE_P | PTE_U | PTE_COW) < 0)
+			panic("duppage: Cannot remap page as COW");
+
 	return 0;
 }
 
@@ -77,8 +98,45 @@ duppage(envid_t envid, unsigned pn)
 envid_t
 fork(void)
 {
-	// LAB 4: Your code here.
-	panic("fork not implemented");
+	envid_t thisenvid = sys_getenvid();
+	envid_t envid;
+	size_t i, j;
+
+	set_pgfault_handler(pgfault);
+
+	if ((envid = sys_exofork()) < 0)
+		panic("fork: Cannot create a child environment");
+
+	if (envid == 0) {
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	}
+
+	for (i = 0; i < PDX(UTOP); i++) {
+		if (!(uvpd[i] & PTE_P))
+			continue;
+
+		for (j = 0; j < NPTENTRIES; j++) {
+			uint32_t pgno = i << 10 | j;
+
+			if (pgno == PGNUM(UXSTACKTOP - PGSIZE))
+				continue;
+
+			if (uvpt[pgno] & PTE_P)
+				duppage(envid, pgno);
+		}
+	}
+
+	if (sys_page_alloc(envid, (void *) (UXSTACKTOP - PGSIZE), PTE_P | PTE_W | PTE_U) < 0)
+		panic("fork: Cannot allocate child exception stack");
+
+	if (sys_env_set_pgfault_upcall(envid, thisenv->env_pgfault_upcall) < 0)
+		panic("fork: Cannot set pgfault_upcall for child environment");
+
+	if (sys_env_set_status(envid, ENV_RUNNABLE) < 0)
+		panic("fork: Cannot change child running status");
+
+	return envid;
 }
 
 // Challenge!
