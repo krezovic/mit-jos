@@ -1,0 +1,36 @@
+1. Compare kern/mpentry.S side by side with boot/boot.S. Bearing in mind that kern/mpentry.S is compiled and linked
+   to run above KERNBASE just like everything else in the kernel, what is the purpose of macro MPBOOTPHYS? Why is it
+   necessary in kern/mpentry.S but not in boot/boot.S? In other words, what could go wrong if it were omitted in 
+   kern/mpentry.S? 
+
+ - Za razliku od boot/boot.S, koji je linkan na adresu 0x7000, kern/mpentry.S je linkan na adresu iznad KERNBASE.
+   Iako su oba učitana na adresu 0x7000, adrese u kodu od kern/mpentry.S su podešene na adrese iznad KERNBASE.
+   procesor u trenutku ulaza u kern/mpentry.S može samo raditi sa adresama ispod 1 MB. Ukoliko bi zaobišli upotrebu
+   MPBOOTPHYS, došlo bi do toga da bi CPU pokušao pristupiti simbolima linkanim na adresu iznad KERNBASE (gdje je
+   kern/mpentry.S linkan), što prije uključenja straničenja nije moguće.
+
+2. It seems that using the big kernel lock guarantees that only one CPU can run the kernel code at a time. Why do we
+   still need separate kernel stacks for each CPU? Describe a scenario in which using a shared kernel stack will go
+   wrong, even with the protection of the big kernel lock. 
+
+ - Više kernel stack-ova je potrebno za pohranjivanje trap frame-a od prekinutog procesa. Ukoliko bi na nekom drugom
+   jezgru došlo do prekida procesa, a na kernel stacku od trenutnog CPU-a se već nalazio trapframe, on bi se prebrisao,
+   te se trenutni procesor ne bi vratio u proces iz kojeg je prekinut.
+
+3. In your implementation of env_run() you should have called lcr3(). Before and after the call to lcr3(), your code makes
+   references (at least it should) to the variable e, the argument to env_run. Upon loading the %cr3 register, the addressing
+   context used by the MMU is instantly changed. But a virtual address (namely e) has meaning  relative to a given address
+   context--the address context specifies the physical address to which the virtual address maps. Why can the pointer e be
+   dereferenced both before and after the addressing switch? 
+
+ - Procesi su mapirani u kernel prostoru, a kernel prostor je dupliciran u korisnički prostor u funkciji env_setup_vm()
+   nakon što su svi procesi mapirani. Sve adrese koje su do tad bile validne u kernel memorijskom prostoru će biti
+   validne i u korisničkom memorijskom prostoru na adresama iznad UTOP.
+
+4. Whenever the kernel switches from one environment to another, it must ensure the old environment's registers are saved
+   so they can be restored properly later. Why? Where does this happen?
+
+ - Da bi prekinuo izvršavanje procesa, mora se desiti prekid, nakon čega će CPU sam snimiti neke od registara potrebnih
+   za ponovno vraćanje u taj procesor na CPU stack. Funkcija _alltraps() će snimiti stanje svih ostalih registara na kernel
+   stack, dok će funkcija trap() kopirati sve snimljene registre sa kernel stacka u env_tf polje unutar strukture
+   okruženja koje je prekinuto.
