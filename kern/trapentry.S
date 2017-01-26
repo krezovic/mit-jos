@@ -22,35 +22,74 @@
  * where NAME is the argument passed to TRAPHANDLER.
  */
 #define TRAPHANDLER(name, num)						\
+	.text;								\
 	.globl name;		/* define global symbol for 'name' */	\
 	.type name, @function;	/* symbol type is function */		\
 	.align 2;		/* align function definition */		\
 	name:			/* function starts here */		\
 	pushl $(num);							\
-	jmp _alltraps
+	jmp _alltraps;							\
+	.data;								\
+	.long name
 
 /* Use TRAPHANDLER_NOEC for traps where the CPU doesn't push an error code.
  * It pushes a 0 in place of the error code, so the trap frame has the same
  * format in either case.
  */
 #define TRAPHANDLER_NOEC(name, num)					\
+	.text;								\
 	.globl name;							\
 	.type name, @function;						\
 	.align 2;							\
 	name:								\
 	pushl $0;							\
 	pushl $(num);							\
-	jmp _alltraps
+	jmp _alltraps;							\
+	.data;								\
+	.long name
+
+.data
+.globl traphandlers
+traphandlers:
+
+TRAPHANDLER_NOEC(T_DIVIDE_handler, T_DIVIDE);
+TRAPHANDLER_NOEC(T_DEBUG_handler, T_DEBUG);
+TRAPHANDLER_NOEC(T_NMI_handler, T_NMI);
+TRAPHANDLER_NOEC(T_BRKPT_handler, T_BRKPT);
+TRAPHANDLER_NOEC(T_OFLOW_handler, T_OFLOW);
+TRAPHANDLER_NOEC(T_BOUND_handler, T_BOUND);
+TRAPHANDLER_NOEC(T_ILLOP_handler, T_ILLOP);
+TRAPHANDLER_NOEC(T_DEVICE_handler, T_DEVICE);
+TRAPHANDLER(T_DBLFLT_handler, T_DBLFLT);
+TRAPHANDLER(T_TSS_handler, T_TSS);
+TRAPHANDLER(T_SEGNP_handler, T_SEGNP);
+TRAPHANDLER(T_STACK_handler, T_STACK);
+TRAPHANDLER(T_GPFLT_handler, T_GPFLT);
+TRAPHANDLER(T_PGFLT_handler, T_PGFLT);
+TRAPHANDLER_NOEC(T_FPERR_handler, T_FPERR);
+TRAPHANDLER(T_ALIGN_handler, T_ALIGN);
+TRAPHANDLER_NOEC(T_MCHK_handler, T_MCHK);
+TRAPHANDLER_NOEC(T_SIMDERR_handler, T_SIMDERR);
+
+TRAPHANDLER_NOEC(T_SYSCALL_handler, T_SYSCALL);
 
 .text
 
-/*
- * Lab 3: Your code here for generating entry points for the different traps.
- */
+_alltraps:
+  pushl %ds
+  pushl %es
+  pushal
 
+  movw $(GD_KD), %ax
+  movw %ax, %ds
+  movw %ax, %es
 
+  pushl %esp
+  call trap
+  addl $4, %esp
 
-/*
- * Lab 3: Your code here for _alltraps
- */
-
+  popal
+  popl %es
+  popl %ds
+  addl $8, %esp
+  iret
